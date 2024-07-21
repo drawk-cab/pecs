@@ -53,6 +53,9 @@ local Contained = world.component({ x = 0, y = 0, width = 120, height = 120})
 -- following.
 local Follower = world.component({ within = nil, following = nil })
 
+-- A resource to track the length of the last tick
+local Timing = world.resource({ tick = 0 })
+
 --[[ END ECS COMPONENTS ]]--
 ----------------------------
 
@@ -109,75 +112,72 @@ end
 -- user input. All that's required is to call `world.entity` with at least
 -- the `Player` & `Position` components, then this System will automatically
 -- detect it and run the function.
-local move = world.system({ Position, Player }, function(entity, tDiff)
-  if (btn(0)) then entity[Position].x -= entity[Player].moveSpeedX * tDiff end
-  if (btn(1)) then entity[Position].x += entity[Player].moveSpeedX * tDiff end
-  if (btn(2)) then entity[Position].y -= entity[Player].moveSpeedY * tDiff end
-  if (btn(3)) then entity[Position].y += entity[Player].moveSpeedY * tDiff end
+local move = world.system({ Position, Player, Timing }, function(entity, p, pl, t)
+  if (btn(0)) then p.x -= pl.moveSpeedX * t.tick end
+  if (btn(1)) then p.x += pl.moveSpeedX * t.tick end
+  if (btn(2)) then p.y -= pl.moveSpeedY * t.tick end
+  if (btn(3)) then p.y += pl.moveSpeedY * t.tick end
 end)
 
 -- Ensure entities stay within their container (usually the world map)
-local containEntities = world.system({ Position, Size, Contained }, function(entity)
-  local container = entity[Contained]
-  local pos = entity[Position]
-  pos.x = mid(
+local containEntities = world.system({ Position, Size, Contained }, function(entity, p, s, container)
+  p.x = mid(
     container.x,
-    pos.x,
-    container.x + container.width - entity[Size].width
+    p.x,
+    container.x + container.width - s.width
   )
-  pos.y = mid(
+  p.y = mid(
     container.y,
-    pos.y,
-    container.y + container.height - entity[Size].height
+    p.y,
+    container.y + container.height - s.height
   )
 end)
 
 -- Very naive rendering in this example. As complexity rises, it makes sense to
 -- create Components for each type of renderable, and the System which actually
 -- does the rendering.
-local drawRenderables = world.system({ Position, Renderable, Size }, function(entity)
+local drawRenderables = world.system({ Position, Renderable, Size }, function(entity, p, r, s)
   rect(
-    entity[Position].x,
-    entity[Position].y,
-    entity[Position].x + entity[Size].width - 1,
-    entity[Position].y + entity[Size].height - 1,
-    entity[Renderable].borderColor
+    p.x,
+    p.y,
+    p.x + s.width - 1,
+    p.y + s.height - 1,
+    r.borderColor
   )
 end)
 
 -- For debug purposes, we're using this system only to render the inner box of
 -- the camera
-local drawRelativeRenderables = world.system({ RelativePosition, Renderable, Size }, function(entity)
-  local xOffset = entity[RelativePosition].parent[Position].x
-  local yOffset = entity[RelativePosition].parent[Position].y
+local drawRelativeRenderables = world.system({ RelativePosition, Renderable, Size }, function(entity, rp, r, s)
+  local xOffset = rp.parent[Position].x
+  local yOffset = rp.parent[Position].y
   rect(
-    xOffset + entity[RelativePosition].x,
-    yOffset + entity[RelativePosition].y,
-    xOffset + entity[RelativePosition].x + entity[Size].width - 1,
-    yOffset + entity[RelativePosition].y + entity[Size].height - 1,
-    entity[Renderable].borderColor
+    xOffset + rp.x,
+    yOffset + rp.y,
+    xOffset + rp.x + s.width - 1,
+    yOffset + rp.y + s.height - 1,
+    r.borderColor
   )
 end)
 
 -- The method to ensure one entity follows along with another entity.
 -- Depends on the followed entity having a Position & Size Component
-local follow = world.system({ Position, Follower }, function(entity)
-  local withinPos = entity[Follower].within[RelativePosition]
-  local withinBox = entity[Follower].within[Size]
-  local followingPos = entity[Follower].following[Position]
-  local followingBox = entity[Follower].following[Size]
-  local pos = entity[Position]
+local follow = world.system({ Position, Follower }, function(entity, p, f)
+  local withinPos = f.within[RelativePosition]
+  local withinBox = f.within[Size]
+  local followingPos = f.following[Position]
+  local followingBox = f.following[Size]
 
-  pos.x = mid(
-    pos.x + (followingPos.x - (pos.x + withinPos.x)),
-    pos.x,
-    pos.x + ((followingPos.x + followingBox.width) - ((pos.x + withinPos.x) + withinBox.width))
+  p.x = mid(
+    p.x + (followingPos.x - (p.x + withinPos.x)),
+    p.x,
+    p.x + ((followingPos.x + followingBox.width) - ((p.x + withinPos.x) + withinBox.width))
   )
 
-  pos.y = mid(
-    pos.y + (followingPos.y - (pos.y + withinPos.y)),
-    pos.y,
-    pos.y + ((followingPos.y + followingBox.height) - ((pos.y + withinPos.y) + withinBox.height))
+  p.y = mid(
+    p.y + (followingPos.y - (p.y + withinPos.y)),
+    p.y,
+    p.y + ((followingPos.y + followingBox.height) - ((p.y + withinPos.y) + withinBox.height))
   )
 end)
 
@@ -190,12 +190,12 @@ end)
 local lastTickTime = time()
 function _update60()
   local tickTime = time()
-  local tDiff = tickTime - lastTickTime
+  Timing().tick = tickTime - lastTickTime
   -- Important to call .update() at the start of every loop, before any Systems
   world.update()
   -- The parameters passed in here will appear as the second argument in the
   -- System's function
-  move(tDiff)
+  move()
   follow()
   containEntities()
   lastTickTime = tickTime

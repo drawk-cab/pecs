@@ -39,6 +39,9 @@ local FountainEmitter = world.component({ emitEverySeconds = 0.01 })
 local RainfallEmitter = world.component({ emitEverySeconds = 0.01 })
 local ExplosionEmitter = world.component({ emitEverySeconds = 0.01 })
 
+-- A resource to track the length of the last tick
+local Timing = world.resource({ tick = 0 })
+
 --[[ END ECS COMPONENTS ]]--
 ----------------------------
 
@@ -69,38 +72,38 @@ end
 --
 -- To try it out; duplicate the `world.entity` call in _init() above, but
 -- with a different type and x/y value.
-local handleEmitterInput = world.system({ Emitter, Position }, function(emitter, tickTime)
+local handleEmitterInput = world.system({ Emitter, Position, Timing }, function(entity, emitter, p, t)
   -- Move the emitter around while keeping it on the screen
-  if (btn(0)) then emitter[Position].x = (emitter[Position].x - 1) % 128 end
-  if (btn(1)) then emitter[Position].x = (emitter[Position].x + 1) % 128 end
-  if (btn(2)) then emitter[Position].y = (emitter[Position].y - 1) % 128 end
-  if (btn(3)) then emitter[Position].y = (emitter[Position].y + 1) % 128 end
+  if (btn(0)) then p.x = (p.x - 1) % 128 end
+  if (btn(1)) then p.x = (p.x + 1) % 128 end
+  if (btn(2)) then p.y = (p.y - 1) % 128 end
+  if (btn(3)) then p.y = (p.y + 1) % 128 end
 
   -- Remove the current emitter and add a new emitter
   if (btnp(4)) then
-    if (emitter[FountainEmitter]) then
-      emitter -= FountainEmitter
-      emitter += RainfallEmitter()
-    elseif (emitter[RainfallEmitter]) then
-      emitter -= RainfallEmitter
-      emitter += ExplosionEmitter()
-    elseif (emitter[ExplosionEmitter]) then
-      emitter -= ExplosionEmitter
-      emitter += FountainEmitter()
+    if (entity[FountainEmitter]) then
+      entity -= FountainEmitter
+      entity += RainfallEmitter()
+    elseif (entity[RainfallEmitter]) then
+      entity -= RainfallEmitter
+      entity += ExplosionEmitter()
+    elseif (entity[ExplosionEmitter]) then
+      entity -= ExplosionEmitter
+      entity += FountainEmitter()
     end
   end
 
   -- Turn the emitter on
   if (btn(5)) then
     -- If it was previously not emitting
-    if (not emitter[Emitter].isEmitting) then
+    if (not emitter.isEmitting) then
       -- Reset the next emission time
-      emitter[Emitter].emitAt = tickTime
+      emitter.emitAt = t.time
     end
 
-    emitter[Emitter].isEmitting = true
+    emitter.isEmitting = true
   else
-    emitter[Emitter].isEmitting = false
+    emitter.isEmitting = false
   end
 end)
 
@@ -114,13 +117,13 @@ end)
 -- ie; this system shouldn't know or care about user input. There could be other
 -- systems that modify emitters (on/off, movement, etc) that have nothing to do
 -- with input. This system only cares about emitting.
-local emitFountain = world.system({ Emitter, FountainEmitter, Position }, function(emitter, tickTime)
-  if (not emitter[Emitter].isEmitting) then return end
+local emitFountain = world.system({ Emitter, FountainEmitter, Position, Timing }, function(entity, emitter, fountain, p, t)
+  if (not emitter.isEmitting) then return end
 
   -- Make sure enough time has elapsed to emit a new particle
   -- And keep emitting until we've caught up in time
-  while (tickTime >= emitter[Emitter].emitAt) do
-    emitter[Emitter].emitAt += emitter[FountainEmitter].emitEverySeconds
+  while (t.time >= emitter.emitAt) do
+    emitter.emitAt += fountain.emitEverySeconds
 
     -- 0.25 is 90deg counter-clockwise, so this points it straight up
     -- 0.125 is 45deg
@@ -131,7 +134,7 @@ local emitFountain = world.system({ Emitter, FountainEmitter, Position }, functi
 
     world.entity(
       {},
-      Position({ x=emitter[Position].x, y=emitter[Position].y }),
+      Position({ x=p.x, y=p.y }),
       Velocity({ x = cos(angle) * speed, y = sin(angle) * speed }),
       Acceleration(), -- Default accel values
       Renderable({ color = 8 + rnd(8) }),
@@ -140,17 +143,17 @@ local emitFountain = world.system({ Emitter, FountainEmitter, Position }, functi
   end
 end)
 
-local emitRainfall = world.system({ Emitter, RainfallEmitter, Position }, function(emitter, tickTime)
-  if (not emitter[Emitter].isEmitting) then return end
+local emitRainfall = world.system({ Emitter, RainfallEmitter, Position, Timing }, function(entity, emitter, rainfall, p, t)
+  if (not emitter.isEmitting) then return end
 
   -- Make sure enough time has elapsed to emit a new particle
   -- And keep emitting until we've caught up in time
-  while (tickTime >= emitter[Emitter].emitAt) do
-    emitter[Emitter].emitAt += emitter[RainfallEmitter].emitEverySeconds
+  while (t.time >= emitter.emitAt) do
+    emitter.emitAt += rainfall.emitEverySeconds
 
     world.entity(
       {},
-      Position({ x=emitter[Position].x + rnd(40) - 20, y=emitter[Position].y }),
+      Position({ x=p.x + rnd(40) - 20, y=p.y }),
       Velocity(),
       Acceleration(), -- Default accel values
       Renderable({ color = 8 + rnd(8) }),
@@ -159,20 +162,20 @@ local emitRainfall = world.system({ Emitter, RainfallEmitter, Position }, functi
   end
 end)
 
-local emitExplosion = world.system({ Emitter, ExplosionEmitter, Position }, function(emitter, tickTime)
-  if (not emitter[Emitter].isEmitting) then return end
+local emitExplosion = world.system({ Emitter, ExplosionEmitter, Position, Timing }, function(entity, emitter, explosion, p, t)
+  if (not emitter.isEmitting) then return end
 
   -- Make sure enough time has elapsed to emit a new particle
   -- And keep emitting until we've caught up in time
-  while (tickTime >= emitter[Emitter].emitAt) do
-    emitter[Emitter].emitAt += emitter[ExplosionEmitter].emitEverySeconds
+  while (t.time >= emitter.emitAt) do
+    emitter.emitAt += explosion.emitEverySeconds
 
     local angle = rnd(1)
     local speed = 50 + rnd(30)
 
     world.entity(
       {},
-      Position({ x=emitter[Position].x, y=emitter[Position].y }),
+      Position({ x=p.x, y=p.y }),
       Velocity({ x = cos(angle) * speed, y = sin(angle) * speed }),
       Acceleration({ x = 0, y = 0 }),-- Overwrite the defaults
       Renderable({ color = 8 + rnd(8) }),
@@ -182,34 +185,34 @@ local emitExplosion = world.system({ Emitter, ExplosionEmitter, Position }, func
 end)
 
 -- Particles don't live forever, so we give them a TTL
-local ttlUpdate = world.system({ Ttl }, function(item, tDiff)
-  item[Ttl].ttlSeconds -= tDiff
+local ttlUpdate = world.system({ Ttl, Timing }, function(entity, ttl, t)
+  ttl.ttlSeconds -= t.tick
 
   -- Once their remaining TTL is up
-  if (item[Ttl].ttlSeconds <= 0) then
+  if (ttl.ttlSeconds <= 0) then
     -- Remove that entity from the world.
-    -- All Systems will be automatically updated to exclude this item
-    world.remove(item)
+    -- All Systems will be automatically updated to exclude this entity
+    world.remove(entity)
   end
 end)
 
 -- A mini physics system
-local moveItems = world.system({ Position, Velocity, Acceleration }, function(item, tDiff)
-  item[Velocity].x += tDiff * item[Acceleration].x
-  item[Velocity].y += tDiff * item[Acceleration].y
-  item[Position].x += tDiff * item[Velocity].x
-  item[Position].y += tDiff * item[Velocity].y
+local move = world.system({ Position, Velocity, Acceleration, Timing }, function(entity, p, v, a, t)
+  v.x += t.tick * a.x
+  v.y += t.tick * a.y
+  p.x += t.tick * v.x
+  p.y += t.tick * v.y
 end)
 
 -- Very naive rendering in this example. As complexity rises, it makes sense to
 -- create Components for each type of renderable, and the System which actually
 -- does the rendering.
-local drawRenderables = world.system({ Position, Renderable }, function(renderable)
+local drawRenderables = world.system({ Position, Renderable }, function(entity, p, r)
   circfill(
-    renderable[Position].x,
-    renderable[Position].y,
-    renderable[Renderable].size,
-    renderable[Renderable].color
+    p.x,
+    p.y,
+    r.size,
+    r.color
   )
 end)
 
@@ -222,17 +225,18 @@ end)
 local lastTickTime = time()
 function _update60()
   local tickTime = time()
-  local tDiff = tickTime - lastTickTime
+  Timing().tick = tickTime - lastTickTime
+  Timing().time = tickTime
   -- Important to call .update() at the start of every loop, before any Systems
   world.update()
   -- The parameters passed in here will appear as the second argument in the
   -- System's function
-  ttlUpdate(tDiff)
-  handleEmitterInput(tickTime)
-  emitFountain(tickTime)
-  emitRainfall(tickTime)
-  emitExplosion(tickTime)
-  moveItems(tDiff)
+  ttlUpdate()
+  handleEmitterInput()
+  emitFountain()
+  emitRainfall()
+  emitExplosion()
+  move()
   lastTickTime = tickTime
 end
 

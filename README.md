@@ -32,6 +32,13 @@ player += Position({ x=10, y=0 })
 player += Velocity({ x=0, y=1 })
 ```
 
+_Resources_ are global objects available to all Entities in the world.
+
+```lua
+local Timing = world.resource() -- defaults to an empty table
+
+```
+
 All data within an _Entity_ can be accessed as long as you know the _Component_
 it belongs to:
 
@@ -44,19 +51,21 @@ _Entities_ that have a certain set of _Components_ (ie; a _filter_).
 
 The game logic function of a _System_ is executed once per matched _Entity_,
 ensuring performance is maintained when there are many entities.
-The function receives any arguments passed when calling the method. Useful for
-passing in elapsed time, etc.
+_Resources_ are available to all Entities as if they were a _Component_ of each one.
+The system is passed a reference to the _Entity_ plus the values of all the _Components_ and _Resources_ it has asked for.
 
 ```lua
-local move = world.system({ Position, Velocity }, function(entity, ticks)
-  entity[Position].x += entity[Velocity].x * ticks
-  entity[Position].y += entity[Velocity].y * ticks
+local move = world.system({ Position, Velocity, Timing }, function(entity, p, v, t)
+  p.x += v.x * t.ticks
+  p.y += v.y * t.ticks
 end)
 
--- Run the system method against all matched entities
--- Any args passed will be available in the system callback function
-local ticks = 1
-move(ticks)
+function _update()
+  -- Outside a system, access resources like this
+  Timing().ticks = 1 
+  -- Run the system against all matched entities
+  move()
+end
 ```
 
 ## Example
@@ -66,20 +75,22 @@ local world = pecs()
 
 local Position = world.component()
 local Velocity = world.component()
+local Timing = world.resource()
 
 local player = world.entity({ name="Jess" })
 
 player += Position({ x=10, y=0 })
 player += Velocity({ x=0, y=1 })
 
-local move = world.system({ Position, Velocity }, function(entity, ticks)
-  entity[Position].x += entity[Velocity].x * ticks
-  entity[Position].y += entity[Velocity].y * ticks
+local move = world.system({ Position, Velocity, Timing }, function(p, v, t)
+  p.x += v.x * t.ticks
+  p.y += v.y * t.ticks
 end)
 
 local lastTime = time()
 function _update()
-  move(time() - lastTime)
+  Timing().ticks = time() - lastTime
+  move(time())
   lastTime = time()
 end
 
@@ -111,7 +122,7 @@ local world1 = pecs()
 local world2 = pecs()
 ```
 
-Each world has its own _Components_ and _Entities_.
+Each world has its own _Components_, _Entities_ and _Resources_.
 
 #### `World#update()`
 
@@ -147,9 +158,17 @@ local Position = world.component()
 local Drawable = world.component({ color: 8 })
 ```
 
+#### `World#resource([initial value]) => Resource`
+
+```lua
+local Timing = world.resource()
+
+local Timing = world.resource({ ticks: 1 })
+```
+
 #### `World#system(filter, callback) => Function`
 
-Where `filter` is a table of Components, and `callback` is a function that's
+Where `filter` is a table of Components and Resources, and `callback` is a function that's
 passed the entity to operate on.
 
 Returns a function that when called will execute the `callback` once per Entity
@@ -159,15 +178,15 @@ When executing the function, any parameters are passed through to the
 `callback`.
 
 ```lua
-local move = world.system({ Position, Velocity }, function(entity, ticks)
-  entity[Position].x += entity[Velocity].x * ticks
-  entity[Position].y += entity[Velocity].y * ticks
+local move = world.system({ Position, Velocity, Timing }, function(entity, p, v, t)
+  p.x += v.x * t.ticks
+  p.y += v.y * t.ticks
 end)
 
--- Run the system method against all matched entities
--- Any args passed will be available in the system callback function
-local ticks = 1
-move(ticks)
+-- Outside a system, access resources like this
+Timing().ticks = 1 
+-- Run the system against all matched entities
+move()
 ```
 
 Systems efficiently maintain a list of filtered entities that is only updated

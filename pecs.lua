@@ -9,6 +9,7 @@
 -- josiebb: reduce tokens, pico8
 --   editor support
 -- Umngane Wami: Picotron tests
+-- drawk-cab: Resources
 
 -- do/end creates new scope
 -- for helpers, etc in PICO-8
@@ -77,6 +78,7 @@ do
   -- Assigning to _ENV makes
   -- it available globally
   _ENV.pecs = function()
+    local resources = {}
     local entities = {}
     local queries = {}
     local systems = {}
@@ -165,7 +167,9 @@ do
           self[comp_factory] = nil
           update_filters(self)
           return self
-        end
+        end,
+
+        __index=resources
       })
 
       local new_comps = 0
@@ -190,11 +194,24 @@ do
       return comp_factory
     end
 
+    function resource(res)
+      res = res or {}
+      local function res_accessor()
+        return res
+      end
+      resources[res_accessor] = res
+      return res_accessor
+    end
+
     function system(comp_filter, callback)
       local entities = query(comp_filter)
-      return function(...)
+      return function()
         for _, ent in pairs(entities) do
-          callback(ent, ...)
+          local ret = {}
+          foreach(comp_filter, function(c) 
+            add(ret,ent[c])
+          end)
+          callback(ent, unpack(ret))
         end
       end
     end
@@ -223,6 +240,7 @@ do
     return {
       entity = entity,
       component = component,
+      resource = resource,
       system = system,
       query = query,
       remove = remove,
